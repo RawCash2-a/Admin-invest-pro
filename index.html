@@ -1,0 +1,127 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InvestPro Admin Panel</title>
+  <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.21.0/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    header { background: #2563eb; color: #fff; padding: 1rem; text-align: center; }
+    nav { background: #1e40af; padding: 1rem; text-align: center; }
+    nav button { background: #3b82f6; border: none; color: #fff; padding: 0.5rem 1rem; margin: 0 0.5rem; cursor: pointer; }
+    section { padding: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 0.75rem; border: 1px solid #ddd; text-align: left; }
+    th { background: #e0e7ff; }
+    .btn { padding: 0.4rem 0.8rem; border: none; cursor: pointer; border-radius: 3px; }
+    .btn-approve { background-color: #16a34a; color: white; }
+    .btn-reject { background-color: #dc2626; color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>InvestPro Admin Panel</h1>
+  </header>
+  <nav>
+    <button onclick="showSection('users')">Users</button>
+    <button onclick="showSection('withdrawals')">Withdrawals</button>
+  </nav>
+  <section id="users-section">
+    <h2>Users</h2>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Balance</th><th>Bank Linked</th></tr>
+      </thead>
+      <tbody id="usersTbody"></tbody>
+    </table>
+  </section>
+  <section id="withdrawals-section" style="display:none;">
+    <h2>Pending Withdrawals</h2>
+    <table>
+      <thead>
+        <tr><th>User ID</th><th>Amount</th><th>Date</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="txTbody"></tbody>
+    </table>
+  </section>  <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpqEgGiRoZO_Hb4IXt_YuTV9WQLmwHBZM",
+      authDomain: "investoship.firebaseapp.com",
+      projectId: "investoship",
+      storageBucket: "investoship.firebasestorage.app",
+      messagingSenderId: "264495950069",
+      appId: "1:264495950069:web:dbda7567da9cb3f0b4bdbc",
+      measurementId: "G-K57NCKQ51D"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    let idToken = null;
+
+    auth.onAuthStateChanged(async user => {
+      if (!user) return window.location.href = '/login.html';
+      idToken = await user.getIdToken();
+      loadUsers();
+    });
+
+    const API_BASE = "/functions";
+
+    function showSection(id) {
+      document.getElementById("users-section").style.display = id === 'users' ? 'block' : 'none';
+      document.getElementById("withdrawals-section").style.display = id === 'withdrawals' ? 'block' : 'none';
+      if (id === 'withdrawals') loadWithdrawals();
+    }
+
+    async function callApi(path, method = 'GET', body = null) {
+      const headers = {
+        Authorization: 'Bearer ' + idToken,
+        'Content-Type': 'application/json'
+      };
+      const options = { method, headers };
+      if (body) options.body = JSON.stringify(body);
+      const res = await fetch(`${API_BASE}${path}`, options);
+      return res.json();
+    }
+
+    async function loadUsers() {
+      const users = await callApi('/users');
+      const tbody = document.getElementById('usersTbody');
+      tbody.innerHTML = '';
+      users.forEach(u => {
+        const row = `<tr>
+          <td>${u.name}</td>
+          <td>${u.email}</td>
+          <td>₦${u.balance?.toFixed(2) || 0}</td>
+          <td>${u.bankAccount ? 'Yes' : 'No'}</td>
+        </tr>`;
+        tbody.insertAdjacentHTML('beforeend', row);
+      });
+    }
+
+    async function loadWithdrawals() {
+      const txs = await callApi('/withdrawals/pending');
+      const tbody = document.getElementById('txTbody');
+      tbody.innerHTML = '';
+      txs.forEach(tx => {
+        const date = new Date(tx.timestamp._seconds * 1000).toLocaleString();
+        const row = `<tr>
+          <td>${tx.userId}</td>
+          <td>₦${Math.abs(tx.amount).toFixed(2)}</td>
+          <td>${date}</td>
+          <td>
+            <button class="btn btn-approve" onclick="updateTx('${tx.id}', true)">Approve</button>
+            <button class="btn btn-reject" onclick="updateTx('${tx.id}', false)">Reject</button>
+          </td>
+        </tr>`;
+        tbody.insertAdjacentHTML('beforeend', row);
+      });
+    }
+
+    async function updateTx(id, approve) {
+      await callApi(`/withdrawals/${id}`, 'POST', { approve });
+      loadWithdrawals();
+    }
+  </script></body>
+</html>
